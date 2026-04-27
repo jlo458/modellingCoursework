@@ -1,1 +1,1 @@
-# modellingCoursework
+# Modelling Coursework
