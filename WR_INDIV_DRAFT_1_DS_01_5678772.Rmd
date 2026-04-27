@@ -1,0 +1,395 @@
+---
+title: "ST117 Individual DRAFT Written Report - Phase 2 Task 1 (Woodland Vegetation – Tree Measurements)"
+author: "My WARWICK ID 5678772 (Report Pod DS-01)"
+date: "2026-04-27" 
+output: pdf_document
+geometry: top=1cm, bottom=1cm
+---
+
+```{r setup, include=FALSE}
+# Libraries
+library(dplyr)
+library(tidyr)
+library(broom)
+```
+
+
+# a)
+
+```{r a}
+# Dataset
+vw_data <- read.csv("ECN_VW1.csv")
+
+# Reshape the data from long format to wide format
+# Keep only the four required quantitative variables
+
+vw_wide <- vw_data %>%
+  filter(
+    FIELDNAME %in% c("DIAMETER", "HEIGHT", "DISTANCE", "NUM_STEMS")
+  ) %>%
+  pivot_wider(
+    id_cols = c(SITECODE, SYEAR, PLOTPID, CELLID, TREEID, STEMID, TREE_SPEC),
+    names_from = FIELDNAME,
+    values_from = VALUE,
+    values_fn = mean
+  ) %>%
+  arrange(SITECODE, SYEAR) %>%
+  rename(
+    Site = SITECODE,
+    Year = SYEAR,
+    Plot = PLOTPID,
+    Cell = CELLID,
+    Tree = TREEID,
+    Stem_ID = STEMID,
+    Species = TREE_SPEC,
+    Diameter = DIAMETER,
+    Height = HEIGHT,
+    No.Stems = NUM_STEMS,
+    Distance = DISTANCE
+  )
+
+# First three rows
+knitr::kable(
+  head(vw_wide, 3),
+  caption = "First three rows of the woodland dataset",
+  digits = 3
+)
+```
+
+# b)
+
+```{r b}
+# Fit the overall linear regression model
+model_all <- lm(Height ~ Diameter, data = vw_wide)
+
+# Display a clean coefficient table for the overall model
+knitr::kable(
+  tidy(model_all),
+  caption = "Overall linear regression of Height on Diameter",
+  digits = 3
+)
+```
+
+## Summary for Part B
+
+Diameter was used as the predictor and Height as the response, as both are continuous and expected to be positively related. The fitted model indicates a positive association, with a slope of 0.104. However, the low $R^2$ (0.116) shows that diameter explains little variation in height, suggesting other influencing factors.
+
+# c)
+
+```{r c}
+# Fit separate linear models for each site
+model_T05 <- lm(Height ~ Diameter, data = subset(vw_wide, Site == "T05"))
+
+model_T06 <- lm(Height ~ Diameter, data = subset(vw_wide, Site == "T06"))
+
+model_T08 <- lm(Height ~ Diameter, data = subset(vw_wide, Site == "T08"))
+
+model_T09 <- lm(Height ~ Diameter, data = subset(vw_wide, Site == "T09"))
+
+# Function to create a compact model summary table
+model_table <- function(model, label) {
+  s <- summary(model)
+
+  out <- data.frame(
+    Model = label,
+    Intercept = round(coef(model)[1], 3),
+    `Slope (Diameter)` = round(coef(model)[2], 3),
+    `R^2` = round(s$r.squared, 3),
+    `Adjusted R^2` = round(s$adj.r.squared, 3),
+    `p-value` = ifelse(coef(s)[2, 4] < 0.001, "<0.001", signif(coef(s)[2, 4], 3)),
+    check.names = FALSE
+  )
+
+  rownames(out) <- NULL
+  out
+}
+```
+
+## Overall Model
+```{r, echo=FALSE}
+knitr::kable(
+  model_table(model_all, "Overall"),
+  caption = "Linear regression results for the overall model"
+)
+```
+
+## Site T05
+```{r, echo=FALSE}
+knitr::kable(
+  model_table(model_T05, "T05"),
+  caption = "Linear regression results for Site T05"
+)
+```
+
+## Site T06
+```{r, echo=FALSE}
+knitr::kable(
+  model_table(model_T06, "T06"),
+  caption = "Linear regression results for Site T06"
+)
+```
+
+## Site T08
+```{r, echo=FALSE}
+knitr::kable(
+  model_table(model_T08, "T08"),
+  caption = "Linear regression results for Site T08"
+)
+```
+
+## Site T09
+```{r, echo=FALSE}
+knitr::kable(
+  model_table(model_T09, "T09"),
+  caption = "Linear regression results for Site T09"
+)
+```
+
+## Overall model
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(vw_wide$Diameter, vw_wide$Height,
+     xlab = "Diameter",
+     ylab = "Height",
+     main = "Scatter plot with regression line",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_all, col = "magenta", lwd = 2)
+```
+
+
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(model_all$fitted.values, model_all$residuals,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     main = "Residuals plot",
+    cex.main =0.9,
+     cex.lab=0.9)
+abline(h = 0, col = "purple")
+```
+
+
+
+## Site T05
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+# Scatter plot for Site T05
+d <- subset(vw_wide, Site == "T05")
+plot(d$Diameter, d$Height,
+     xlab = "Diameter",
+     ylab = "Height",
+     main = "Scatter plot with regression line",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T05, col = "blue", lwd = 2)
+```
+
+
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(model_T05$fitted.values, model_T05$residuals,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     main = "Residuals plot",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(h = 0, col = "red")
+```
+
+
+
+## Site T06
+```{r, echo=FALSE,fig.width=6.5, fig.height=4.5, fig.align='center'}
+# Scatter plot for Site T06
+d <- subset(vw_wide, Site == "T06")
+plot(d$Diameter, d$Height,
+     xlab = "Diameter",
+     ylab = "Height",
+     main = "Scatter plot with regression line",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T06, col = "magenta", lwd = 2)
+```
+
+
+```{r,echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(model_T06$fitted.values, model_T06$residuals,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     main = "Residuals plot",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(h = 0, col = "purple")
+```
+
+
+## Site T08
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+# Scatter plot for Site T08
+d <- subset(vw_wide, Site == "T08")
+plot(d$Diameter, d$Height,
+     xlab = "Diameter",
+     ylab = "Height",
+     main = "Scatter plot with regression line",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T08, col = "blue", lwd = 2)
+```
+
+
+```{r,echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(model_T08$fitted.values, model_T08$residuals,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     main = "Residuals plot",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(h = 0, col = "red")
+```
+
+
+## Site T09
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+# Scatter plot for Site T09
+d <- subset(vw_wide, Site == "T09")
+plot(d$Diameter, d$Height,
+     xlab = "Diameter",
+     ylab = "Height",
+     main = "Scatter plot with regression line",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T09, col = "purple", lwd = 2)
+```
+
+
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+plot(model_T09$fitted.values, model_T09$residuals,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     main = "Residuals plot",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(h = 0, col = "red")
+```
+
+## Summary for Part C
+
+The overall model (Table 3) and the site-specific models (Tables 4–7) all indicate a positive relationship between diameter and height, although the strength of this relationship differs across sites. The overall model has a relatively low $R^2$ value (0.116), suggesting that diameter is a weak predictor of height when data from all sites are combined. This likely reflects unaccounted differences between sites in the pooled model.
+
+In comparison, Site T05 (Table 4) shows a much stronger linear relationship ($R^2$ =0.839), with observations closely clustered around the fitted line. The residual plot displays no clear structure, and the spread of residuals appears fairly constant, indicating that the assumptions of linear regression are reasonably satisfied for this site.
+
+For Site T08 (Table 6), there is still a clear positive association, but the variability increases with diameter. This pattern is also evident in the residual plot, where residual spread grows with fitted values. Such a pattern suggests heteroscedasticity, meaning the assumption of constant variance is violated.
+
+Sites T06 and T09 (Tables 5 and 7) exhibit much weaker relationships. In particular, T09 has a very low $R^2$
+ value (0.028), indicating little to no linear association between diameter and height. The residual plots for these sites show noticeable patterns and some extreme values, suggesting the presence of outliers and additional violations of model assumptions.
+
+Overall, although a positive relationship is present, the appropriateness of a simple linear model varies considerably by site. It performs well for T05 but is less suitable for T08, T06, and especially T09.
+
+# d)
+
+## Log-Transformed Diameter Models by Site
+
+```{r d}
+# T05
+d_T05 <- subset(vw_wide, Site == "T05" & !is.na(Diameter) & !is.na(Height) & Diameter > 0)
+model_T05_log <- lm(Height ~ log(Diameter), data = d_T05)
+
+# T06
+d_T06 <- subset(vw_wide, Site == "T06" & !is.na(Diameter) & !is.na(Height) & Diameter > 0)
+model_T06_log <- lm(Height ~ log(Diameter), data = d_T06)
+
+# T08
+d_T08 <- subset(vw_wide, Site == "T08" & !is.na(Diameter) & !is.na(Height) & Diameter > 0)
+model_T08_log <- lm(Height ~ log(Diameter), data = d_T08)
+
+# T09
+d_T09 <- subset(vw_wide, Site == "T09" & !is.na(Diameter) & !is.na(Height) & Diameter > 0)
+model_T09_log <- lm(Height ~ log(Diameter), data = d_T09)
+
+```
+
+
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+cat("\n\n")
+d <- subset(vw_wide, Site == "T05")
+plot(log(d$Diameter), d$Height,
+     main = "Log-transformation model (improved fit)",
+     xlab = "log(Diameter)",
+     ylab = "Height",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T05_log, col = "green")
+```
+
+
+```{r, echo=FALSE,fig.width=6.5, fig.height=4.5, fig.align='center'}
+cat("\n\n")
+d <- subset(vw_wide, Site == "T06")
+plot(log(d$Diameter), d$Height,
+     main = "Log-transformation model (improved fit)",
+     xlab = "log(Diameter)",
+     ylab = "Height",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T06_log, col = "green")
+```
+
+
+```{r, echo=FALSE,fig.width=6.5, fig.height=4.5, fig.align='center'}
+cat("\n\n")
+d <- subset(vw_wide, Site == "T08")
+plot(log(d$Diameter), d$Height,
+     main = "Log-transformation model (improved fit)",
+     xlab = "log(Diameter)",
+     ylab = "Height",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T08_log, col = "green")
+```
+
+
+```{r, echo=FALSE, fig.width=6.5, fig.height=4.5, fig.align='center'}
+cat("\n\n")
+d <- subset(vw_wide, Site == "T09")
+plot(log(d$Diameter), d$Height,
+     main = "Log-transformation model (improved fit)",
+     xlab = "log(Diameter)",
+     ylab = "Height",
+     cex.main =0.9,
+     cex.lab=0.9)
+abline(model_T09_log, col = "green")
+```
+
+
+```{r, echo=FALSE}
+knitr::kable(model_table(model_T05_log, "T05 (log)"),
+             caption = "Improved model for Site T05",
+             escape = FALSE)
+```
+
+```{r, echo=FALSE}
+knitr::kable(model_table(model_T06_log, "T06 (log)"),
+             caption = "Improved model for Site T06",
+             escape = FALSE)
+```
+
+```{r, echo=FALSE}
+knitr::kable(model_table(model_T08_log, "T08 (log)"),
+             caption = "Improved model for Site T08",
+             escape = FALSE)
+```
+
+```{r, echo=FALSE}
+knitr::kable(model_table(model_T09_log, "T09 (log)"),
+             caption = "Improved model for Site T09",
+             escape = FALSE)
+```
+
+## Summary for Part D
+
+For each site, different characteristics of the data influence how appropriate a simple linear regression model is.
+
+For Site T05, there are no major concerns. The scatter plot displays an approximately linear pattern, and the residual plot shows no obvious structure. This indicates that key assumptions of linear regression, particularly linearity and constant variance, are reasonably met. Although a log transformation was applied for consistency, it has little effect on the results or model fit, with similar values of $R^2$.
+
+For Site T06, the main issue is the presence of outliers. Some observations have much greater heights than expected for their diameter, which can strongly influence the fitted line. Since linear regression is sensitive to extreme values, a log transformation of diameter was used to reduce their impact. This produces a slightly more stable model, although the fit remains limited, as reflected in modest $R^2$ values.
+
+For Site T08, heteroscedasticity is the primary concern, with variability increasing as diameter increases. This violates the constant variance assumption and is clearly visible in the residual plot. Applying a log transformation helps stabilise the variance by compressing larger values. As a result, the residuals appear more evenly distributed, and the model fit improves, with higher $R^2$.
+
+For Site T09, the main limitation is the weak relationship between variables. The data show little evidence of a linear trend, so the linearity assumption is not satisfied. Even after log transformation, only minor improvement is observed, and both $R^2$ remain low, indicating that a linear model is not appropriate for this site.

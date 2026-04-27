@@ -1,0 +1,390 @@
+---
+title: "ST117 Individual DRAFT Written Report - Phase 2 Task 3 (Woodland vegetation - Butterflies and Moths)"
+author: "My WARWICK ID 5678772 (Report Pod DS-01)"
+date: "2026-04-27" 
+output: pdf_document
+geometry: top=1cm, bottom=1cm
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(knitr)
+```
+
+
+# a)
+
+```{r a}
+# Adding/Sorting Dataset
+wood <- read.csv("ECN_VW1.csv")   # Woodland vegetation data
+but  <- read.csv("ECN_IB1.csv")   # Butterfly data
+moth <- read.csv("ECN_IM1.csv")   # Moth data
+
+# Formatting date and numeric fields
+but$DATE  <- as.Date(but$SDATE, format = "%d-%b-%y")   
+but$YEAR  <- as.integer(format(but$DATE, "%Y"))        
+but$VALUE <- as.numeric(but$VALUE)                     
+
+moth$DATE  <- as.Date(moth$SDATE, format = "%d-%b-%y")
+moth$YEAR  <- as.integer(format(moth$DATE, "%Y"))
+moth$VALUE <- as.numeric(moth$VALUE)
+
+# Woodland species richness 
+wood_richness <- wood %>%
+  filter(!is.na(SITECODE), !is.na(SYEAR), !is.na(TREE_SPEC)) %>%  
+  transmute(SITECODE, YEAR = as.integer(SYEAR), TREE_SPEC = as.integer(TREE_SPEC)) %>%
+  distinct() %>%                                                 
+  count(SITECODE, YEAR, name = "woodland_species_n")             
+
+but_annual <- but %>%
+  filter(!is.na(SITECODE), !is.na(YEAR), !is.na(VALUE)) %>%
+  group_by(SITECODE, YEAR) %>%
+  summarise(total_butterflies = sum(VALUE), .groups = "drop")
+
+moth_annual <- moth %>%
+  filter(!is.na(SITECODE), !is.na(YEAR), !is.na(VALUE)) %>%
+  group_by(SITECODE, YEAR) %>%
+  summarise(total_moths = sum(VALUE), .groups = "drop")
+
+but_wood <- wood_richness %>%
+  inner_join(but_annual, by = c("SITECODE", "YEAR")) %>%  
+  arrange(SITECODE, YEAR)
+
+moth_wood <- wood_richness %>%
+  inner_join(moth_annual, by = c("SITECODE", "YEAR")) %>%
+  arrange(SITECODE, YEAR)
+
+# Merge butterfly and moth datasets
+but_moth <- but_annual %>%
+  inner_join(moth_annual, by = c("SITECODE", "YEAR")) %>%
+  arrange(SITECODE, YEAR) %>%
+  mutate(
+    log_but = log1p(total_butterflies),   
+    log_moth = log1p(total_moths)
+  )
+
+n_bw <- nrow(but_wood)                        
+n_mw <- nrow(moth_wood)  
+
+sites_bw <- dplyr::n_distinct(but_wood$SITECODE)
+sites_mw <- dplyr::n_distinct(moth_wood$SITECODE)
+rich_min_bw <- min(but_wood$woodland_species_n)
+rich_max_bw <- max(but_wood$woodland_species_n)
+rich_min_mw <- min(moth_wood$woodland_species_n)
+rich_max_mw <- max(moth_wood$woodland_species_n)
+
+# Fit linear models (raw and log-transformed)
+m_raw <- lm(total_moths ~ total_butterflies, data = but_moth)  
+m_log <- lm(log_moth ~ log_but, data = but_moth)               
+
+# Model summaries
+raw_sum <- summary(m_raw)
+log_sum <- summary(m_log)
+
+raw_table <- data.frame(
+  n = nrow(but_moth),
+  intercept = unname(coef(m_raw)[1]),
+  slope = unname(coef(m_raw)[2]),
+  r_squared = raw_sum$r.squared,
+  adj_r_squared = raw_sum$adj.r.squared,
+  resid_sd = raw_sum$sigma,
+  p_value_slope = coef(raw_sum)[2, 4]
+)
+
+log_table <- data.frame(
+  n = nrow(but_moth),
+  intercept = unname(coef(m_log)[1]),
+  slope = unname(coef(m_log)[2]),
+  r_squared = log_sum$r.squared,
+  adj_r_squared = log_sum$adj.r.squared,
+  resid_sd = log_sum$sigma,
+  p_value_slope = coef(log_sum)[2, 4]
+)
+
+site_levels <- sort(unique(c(but_wood$SITECODE, moth_wood$SITECODE, but_moth$SITECODE)))
+site_cols <- seq_along(site_levels)
+names(site_cols) <- site_levels
+
+pad_range <- function(x, prop = 0.08) {
+  r <- range(x, na.rm = TRUE)
+  if (diff(r) == 0) return(r + c(-1, 1))
+  r + c(-1, 1) * diff(r) * prop
+}
+
+cat("Butterflies + Woodland\n")
+knitr::kable(head(but_wood, 3), digits = 3)
+
+cat("\nMoths + Woodland\n")
+knitr::kable(head(moth_wood, 3), digits = 3)
+```
+
+# b)
+
+```{r b}
+old_par <- par(mar = c(4.2, 4.7, 3.0, 0.8), mgp = c(2.5, 0.7, 0))
+
+plot(
+  but_wood$woodland_species_n,
+  but_wood$total_butterflies,
+  pch = 19,
+  col = site_cols[but_wood$SITECODE],
+  xlim = pad_range(but_wood$woodland_species_n, 0.12),
+  ylim = pad_range(but_wood$total_butterflies, 0.16),
+  xlab = "Unique woodland species",
+  ylab = "Annual butterfly total",
+  main = "Butterflies and woodland richness",
+  cex.main = 0.95,
+  cex.lab = 0.9,
+  cex.axis = 0.85
+)
+
+text(
+  but_wood$woodland_species_n,
+  but_wood$total_butterflies,
+  labels = but_wood$YEAR,
+  pos = 3,
+  cex = 0.58,
+  col = site_cols[but_wood$SITECODE],
+  xpd = NA
+)
+
+legend(
+  "topright",
+  legend = sort(unique(but_wood$SITECODE)),
+  col = site_cols[sort(unique(but_wood$SITECODE))],
+  pch = 19,
+  title = "Site",
+  bty = "n",
+  cex = 0.68
+)
+
+par(old_par)
+
+
+old_par <- par(mar = c(4.2, 4.7, 3.0, 0.8), mgp = c(2.5, 0.7, 0))
+
+plot(
+  moth_wood$woodland_species_n,
+  moth_wood$total_moths,
+  pch = 19,
+  col = site_cols[moth_wood$SITECODE],
+  xlim = pad_range(moth_wood$woodland_species_n, 0.12),
+  ylim = pad_range(moth_wood$total_moths, 0.16),
+  xlab = "Unique woodland species",
+  ylab = "Annual moth total",
+  main = "Moths and woodland richness",
+  cex.main = 0.95,
+  cex.lab = 0.9,
+  cex.axis = 0.85
+)
+
+text(
+  moth_wood$woodland_species_n,
+  moth_wood$total_moths,
+  labels = moth_wood$YEAR,
+  pos = 3,
+  cex = 0.58,
+  col = site_cols[moth_wood$SITECODE],
+  xpd = NA
+)
+
+legend(
+  "topright",
+  legend = sort(unique(moth_wood$SITECODE)),
+  col = site_cols[sort(unique(moth_wood$SITECODE))],
+  pch = 19,
+  title = "Site",
+  bty = "n",
+  cex = 0.68
+)
+
+par(old_par)
+```
+```{r}
+site_levels <- sort(unique(c(but_wood$SITECODE, moth_wood$SITECODE)))
+site_cols   <- setNames(hcl.colors(length(site_levels), palette = "Dark 3"), site_levels)
+
+base_par <- list(mar = c(4.2, 4.7, 3.2, 1.0), mgp = c(2.5, 0.7, 0))
+
+# Plot 1: Butterflies vs Woodland Richness
+old_par <- par(base_par)
+plot(
+  but_wood$woodland_species_n,
+  but_wood$total_butterflies,
+  pch  = 21,
+  bg   = adjustcolor(site_cols[but_wood$SITECODE], alpha.f = 0.75),
+  col  = adjustcolor(site_cols[but_wood$SITECODE], alpha.f = 0.95),
+  lwd  = 0.6,
+  xlim = pad_range(but_wood$woodland_species_n, 0.12),
+  ylim = pad_range(but_wood$total_butterflies, 0.16),
+  xlab = "Unique woodland species",
+  ylab = "Annual butterfly total",
+  main = "Butterflies and woodland richness",
+  cex.main = 0.95, cex.lab = 0.90, cex.axis = 0.85, cex = 1.1
+)
+abline(lm(total_butterflies ~ woodland_species_n, data = but_wood),
+       col = "grey50", lty = 2, lwd = 1.2)
+text(
+  but_wood$woodland_species_n, but_wood$total_butterflies,
+  labels = but_wood$YEAR, pos = 3, cex = 0.55,
+  col = adjustcolor(site_cols[but_wood$SITECODE], alpha.f = 0.85), xpd = NA
+)
+legend(
+  "topright",
+  legend = sort(unique(but_wood$SITECODE)),
+  pt.bg  = site_cols[sort(unique(but_wood$SITECODE))],
+  col    = site_cols[sort(unique(but_wood$SITECODE))],
+  pch = 21, pt.lwd = 0.6, title = "Site", bty = "n", cex = 0.68, pt.cex = 1.1
+)
+par(old_par)
+
+# Plot 2: Moths vs Woodland Richness
+old_par <- par(base_par)
+plot(
+  moth_wood$woodland_species_n,
+  moth_wood$total_moths,
+  pch  = 21,
+  bg   = adjustcolor(site_cols[moth_wood$SITECODE], alpha.f = 0.75),
+  col  = adjustcolor(site_cols[moth_wood$SITECODE], alpha.f = 0.95),
+  lwd  = 0.6,
+  xlim = pad_range(moth_wood$woodland_species_n, 0.12),
+  ylim = pad_range(moth_wood$total_moths, 0.16),
+  xlab = "Unique woodland species",
+  ylab = "Annual moth total",
+  main = "Moths and woodland richness",
+  cex.main = 0.95, cex.lab = 0.90, cex.axis = 0.85, cex = 1.1
+)
+abline(lm(total_moths ~ woodland_species_n, data = moth_wood),
+       col = "grey50", lty = 2, lwd = 1.2)
+text(
+  moth_wood$woodland_species_n, moth_wood$total_moths,
+  labels = moth_wood$YEAR, pos = 3, cex = 0.55,
+  col = adjustcolor(site_cols[moth_wood$SITECODE], alpha.f = 0.85), xpd = NA
+)
+legend(
+  "topright",
+  legend = sort(unique(moth_wood$SITECODE)),
+  pt.bg  = site_cols[sort(unique(moth_wood$SITECODE))],
+  col    = site_cols[sort(unique(moth_wood$SITECODE))],
+  pch = 21, pt.lwd = 0.6, title = "Site", bty = "n", cex = 0.68, pt.cex = 1.1
+)
+par(old_par)
+```
+
+
+**Summary**
+Points were coloured by SITECODE and labelled by year to represent both variables clearly on the graph. This allows comparison of patterns across sites and helps assess whether any relationship between woodland species richness and invertebrate abundance is consistent across sites or influenced by repeated observations from specific site–year combinations.
+
+# c)
+
+Two key issues reduce the suitability of simple linear regression for both butterflies and moths. First, the overlap with Woodland Vegetation data is limited and strongly clustered. Only a small number of Butterfly–Woodland and Moth–Woodland site–year combinations are available, drawn from relatively few sites. Repeated observations from the same sites occur within a narrow range of woodland richness, so any fitted line would be dominated by a few clustered site-level patterns rather than representing a broad, independent dataset.
+
+Second, the response variables are annual counts, which show increasing variability at higher values. A few site–years act as influential points, particularly where low richness coincides with high abundance. This indicates non-constant variance and departures from normality in the residuals.
+
+Overall, these features suggest that a pooled linear model relating invertebrate abundance to Woodland species richness would be unstable and difficult to interpret.
+
+# d)
+
+```{r d}
+old_par <- par(mar = c(4.2, 4.7, 3.0, 0.8), mgp = c(2.5, 0.7, 0))
+
+plot(
+  but_moth$total_butterflies,
+  but_moth$total_moths,
+  pch = 19,
+  col = site_cols[but_moth$SITECODE],
+  xlim = pad_range(but_moth$total_butterflies, 0.08),
+  ylim = pad_range(but_moth$total_moths, 0.10),
+  xlab = "Annual butterfly total",
+  ylab = "Annual moth total",
+  main = "Moths vs butterflies: raw counts",
+  cex.main = 0.95,
+  cex.lab = 0.9,
+  cex.axis = 0.85
+)
+
+abline(m_raw, lwd = 2)
+
+legend(
+  "topright",
+  legend = sort(unique(but_moth$SITECODE)),
+  col = site_cols[sort(unique(but_moth$SITECODE))],
+  pch = 19,
+  title = "Site",
+  bty = "n",
+  cex = 0.62
+)
+
+par(old_par)
+```
+
+
+```{r d_fig2, fig.height=4.1, fig.width=5.8, out.width='0.78\\textwidth', echo=TRUE}
+old_par <- par(mar = c(4.2, 4.2, 3.0, 1.0), mgp = c(2.4, 0.7, 0))
+plot(m_raw, which = 1, cex.main = 0.9, cex.lab = 0.85, cex.axis = 0.8)
+par(old_par)
+```
+
+
+```{r d_fig3, fig.height=4.1, fig.width=5.8, out.width='0.78\\textwidth', echo=TRUE}
+old_par <- par(mar = c(4.2, 4.2, 3.0, 1.0), mgp = c(2.4, 0.7, 0))
+plot(m_raw, which = 2, cex.main = 0.9, cex.lab = 0.85, cex.axis = 0.8)
+par(old_par)
+```
+
+
+```{r d_fig4, fig.height=4.2, fig.width=6.2, out.width='0.82\\textwidth', echo=TRUE}
+old_par <- par(mar = c(4.2, 4.7, 3.0, 0.8), mgp = c(2.5, 0.7, 0))
+
+plot(
+  but_moth$log_but,
+  but_moth$log_moth,
+  pch = 19,
+  col = site_cols[but_moth$SITECODE],
+  xlim = pad_range(but_moth$log_but, 0.08),
+  ylim = pad_range(but_moth$log_moth, 0.10),
+  xlab = "log(1 + butterfly total)",
+  ylab = "log(1 + moth total)",
+  main = "Moths vs butterflies: log scale",
+  cex.main = 0.95,
+  cex.lab = 0.9,
+  cex.axis = 0.85
+)
+
+abline(m_log, lwd = 2)
+
+legend(
+  "topright",
+  legend = sort(unique(but_moth$SITECODE)),
+  col = site_cols[sort(unique(but_moth$SITECODE))],
+  pch = 19,
+  title = "Site",
+  bty = "n",
+  cex = 0.62
+)
+
+par(old_par)
+```
+
+
+```{r d_fig5, fig.height=4.1, fig.width=5.8, out.width='0.78\\textwidth', echo=TRUE}
+old_par <- par(mar = c(4.2, 4.2, 3.0, 1.0), mgp = c(2.4, 0.7, 0))
+plot(m_log, which = 1, cex.main = 0.9, cex.lab = 0.85, cex.axis = 0.8)
+par(old_par)
+```
+
+```{r d_tab1, echo=FALSE}
+knitr::kable(raw_table, digits = 4, caption = "Raw-count linear model summary")
+```
+
+```{r d_tab2, echo=FALSE}
+knitr::kable(log_table, digits = 4, caption = "Log-transformed linear model summary")
+```
+
+**Summary**
+I first examined the relationship between annual moth and butterfly totals by plotting moth counts against butterfly counts for each site–year and fitting a simple linear regression on the raw scale. The scatterplot showed no strong linear pattern, which was reflected in the model results: the estimated slope was `r round(raw_table$slope, 3)`, with a p-value of `r signif(raw_table$p_value_slope, 3)`, and the model explained very little variation in moth counts ($R^2$ = `r round(raw_table$r_squared, 3)`). Diagnostic plots supported this, as the residuals displayed clear heteroscedasticity and the normal Q-Q plot indicated departures from normality. This behaviour is expected because both variables are non-negative annual totals, typically right-skewed, with variability increasing at higher values.
+
+To improve the model, both variables were transformed using log(1 + x) and the regression was refitted. This reduced skewness and stabilised the variance, making the relationship easier to interpret. On the transformed scale, the slope was `r round(log_table$slope, 3)` with a p-value of `r signif(log_table$p_value_slope, 3)`, and $R^2$ increased to `r round(log_table$r_squared, 3)`. The residuals showed a more consistent spread and were closer to a normal distribution, indicating that model assumptions were better satisfied. The log-transformed model was therefore chosen as the final model.
+
+Despite this improvement, butterfly totals remain a weak predictor of moth totals. The low R-squared suggests that most variation in moth abundance is driven by other factors, such as site differences, environmental conditions, and differing ecological responses between the two groups.
+

@@ -1,0 +1,202 @@
+---
+title: "ST117 Individual DRAFT Written Report - Phase 2 Task 2 (Moths-Flight windows)"
+author: "My WARWICK ID 5678772 (Report Pod DS-01)"
+date: "2026-04-27" 
+output: pdf_document
+geometry: top=1cm, bottom=1cm
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(MASS)
+library(fitdistrplus)
+```
+
+```{r}
+# Adding/Sorting Dataset
+moths <- read.csv("ECN_IM1.csv", stringsAsFactors = FALSE)
+
+moths$SDATE <- as.Date(moths$SDATE, format = "%d-%b-%y")
+moths$YEAR <- as.integer(format(moths$SDATE, "%Y"))
+moths$WEEK <- as.integer(format(moths$SDATE, "%U"))
+moths$COUNT <- as.numeric(moths$VALUE)
+
+str(moths)
+head(moths)
+```
+
+# a)
+
+```{r a}
+weekly_all <- aggregate(COUNT ~ WEEK + SITECODE, data = moths, sum)
+
+ggplot(weekly_all, aes(x = WEEK, y = COUNT, fill = SITECODE)) +
+  geom_col(position = "dodge") +
+  labs(title = "Weekly moth Count: All Species",
+       x = "Calendar Week", y = "Total Count") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+# Species Selected 
+chosen <- c(2178, 318, 469, 574, 302)
+
+# Barchart Using Selected Species
+for (sp in chosen) {
+  data_sp <- subset(moths, FIELDNAME == sp)
+  agg <- aggregate(COUNT ~ WEEK + SITECODE, data = data_sp, sum)
+
+  print(
+    ggplot(agg, aes(x = WEEK, y = COUNT, fill = SITECODE)) +
+      geom_col(position = "dodge") +
+      labs(title = paste("Weekly Counts: Species", sp),
+           x = "Calendar Week", y = "Total Count") +
+  theme(plot.title = element_text(hjust = 0.5))
+  )
+}
+```
+
+## Interpretation Weekly Patterns
+
+The all-species plots show a clear seasonal pattern, with moth abundance rising throughout spring, peaking mainly from summer to early autumn. This pattern is consistent with the period when adult moths emerge, reproduce, and are most active.
+
+Across the five selected species, flight activity differs in both timing and shape. Species 318, 469, and 574 each show one dominant seasonal peak and are therefore quite unimodal, suggesting that there's one  main generation per year. In contrast, species 2178 and 302 show more than one distinct period of increased activity and are clearly multimodal, which is consistent with multiple generations or separated emergence periods within the same season.
+
+Differences between sites suggest that habitat, vegetation, and local microclimate influence both abundance and timing. Overall, the six plots demonstrate that moth phenology is strongly seasonal but varies with species and site.
+
+# b)
+
+```{r b}
+moths_pos <- moths[moths$COUNT > 0, ]
+
+first_weeks <- aggregate(WEEK ~ SITECODE + FIELDNAME + YEAR, data = moths_pos, FUN = min)
+last_weeks  <- aggregate(WEEK ~ SITECODE + FIELDNAME + YEAR, data = moths_pos, FUN = max)
+
+names(first_weeks)[names(first_weeks) == "WEEK"] <- "first_week"
+names(last_weeks)[names(last_weeks) == "WEEK"] <- "last_week"
+
+flight_windows <- merge(first_weeks, last_weeks,
+                        by = c("SITECODE", "FIELDNAME", "YEAR"))
+
+flight_windows$flight_length <- flight_windows$last_week - flight_windows$first_week + 1
+
+moths <- merge(
+  moths,
+  flight_windows[, c("SITECODE", "FIELDNAME", "YEAR", "first_week", "last_week", "flight_length")],
+  by = c("SITECODE", "FIELDNAME", "YEAR"),
+  all.x = TRUE
+)
+
+head(moths)
+
+ggplot(flight_windows, aes(x = flight_length)) +
+  geom_histogram(binwidth = 1, fill = "magenta", colour = "black") +
+  labs(title = "Distribution of Flight Window Lengths",
+       x = "Flight Window Length (weeks)", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Interpretation of Flight Window Lengths
+
+The distribution of flight window lengths is heavily concentrated at short durations, particularly one week, with a long right-hand tail. This pronounced spike at very short flight lengths is unlikely to be biological, as adult moth activity typically persists for longer than a single recorded week.
+
+A more plausible explanation is incomplete detection, caused by irregular sampling, sparse records, low abundance, weather conditions, or missed visits. Grouping the data by site, species, and year can also create artificially short windows when only one or two positive observations are recorded.
+
+Therefore, the inflation of very short flight windows is more likely to reflect limitations in sampling design and detectability rather than true biological flight periods.
+
+# c)
+
+**Method in Moments Derivations**
+
+Let sample mean be \(\bar{x}\) and sample variance be \(s^2\).
+
+For Poisson distribution:
+\[
+\hat{\lambda}_{MoM}=\bar{x}.
+\]
+
+For Gamma distribution:
+\[
+\hat{\alpha}_{MoM}=\frac{\bar{x}^2}{s^2}, \quad
+\hat{\beta}_{MoM}=\frac{\bar{x}}{s^2}.
+\]
+
+For Negative Binomial:
+\[
+\hat{p}_{MoM}=\frac{\bar{x}}{s^2}, \quad
+\hat{r}_{MoM}=\frac{\bar{x}^2}{s^2-\bar{x}}.
+\]
+
+
+```{r}
+fw_data <- subset(flight_windows, flight_length >= 2)
+x <- fw_data$flight_length
+
+mean_x <- mean(x)
+var_x <- var(x)
+
+lambda <- mean_x
+shape_g <- mean_x^2 / var_x
+rate_g <- mean_x / var_x
+
+size_nb <- if (var_x > mean_x) mean_x^2 / (var_x - mean_x) else NA
+prob_nb <- if (var_x > mean_x) mean_x / var_x else NA
+
+
+
+loglik_pois <- sum(dpois(x, lambda, log = TRUE))
+loglik_gamma <- sum(dgamma(x, shape = shape_g, rate = rate_g, log = TRUE))
+loglik_nb <- if (!is.na(size_nb)) sum(dnbinom(x, size = size_nb, prob = prob_nb, log = TRUE)) else NA
+
+
+results <- data.frame(
+  Model = c("Poison", "Gamma", "Negtive Binomial"),
+  Param1 = c(lambda, shape_g, size_nb),
+  Param2 = c(NA, rate_g, prob_nb),
+  LogLikelihood = c(loglik_pois, loglik_gamma, loglik_nb)
+  
+)
+
+results
+```
+
+**Summary Model Fits**
+Higher "Log-Likelihood" values indicate better fit.
+Negative "Binomial" models typically provide the best fit.
+
+```{r}
+p <- ggplot(fw_data, aes(x = flight_length)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth = 1, boundary = 0.5,
+                 fill = "purple", colour = "black") +
+  theme_minimal()
+
+x_int <- seq(min(x), max(x), by = 1)
+x_cont <- seq(min(x), max(x), length.out = 500)
+
+plotc <- p +
+  geom_point(data = data.frame(x = x_int, y = dpois(x_int, lambda = lambda)),
+             aes(x = x, y = y, colour = "Poisson"),
+             inherit.aes = FALSE) +
+  geom_line(data = data.frame(x = x_cont, y = dgamma(x_cont, shape = shape_g, rate = rate_g)),
+            aes(x = x, y = y, colour = "Gamma"),
+            inherit.aes = FALSE)
+
+if (!is.na(size_nb)) {
+  plotc <- plotc +
+    geom_point(data = data.frame(x = x_int, y = dnbinom(x_int, size = size_nb, prob = prob_nb)),
+               aes(x = x, y = y, colour = "Negative Binomial"),
+               inherit.aes = FALSE)
+}
+
+plotc
+```
+
+## Model Comparison & Interpretation
+
+The empirical distribution of flight window length is strongly right-skewed, with many short durations and a long tail. The Poisson model provides the poorest fit due to its restrictive assumption that the mean equals the variance, which is inappropriate for these overdispersed data.
+
+The Negative Binomial model improves the fit by allowing the variance to exceed the mean, making it well suited to ecological count data. The Gamma distribution also captures the skewness effectively, although it models continuous rather than discrete data.
+
+Overall, the Negative Binomial model provides the best fit and is the most appropriate in this scientific context, given its compatibility with count data and its ability to account for overdispersion.
+
